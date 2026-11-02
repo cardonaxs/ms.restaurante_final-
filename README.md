@@ -2,8 +2,7 @@
 
 ## Integrantes
 * Silvana Cardona Zapata
-* Michael Rivera
-* Juan Alejandro Cano
+
 
 ## Problema
 Actualmente, el restaurante opera sin una aplicación digital centralizada para la toma de pedidos y la gestión de su menú. El proceso se realiza de forma manual o mediante herramientas desconectadas, lo que genera retrasos en la atención, errores en la comanda hacia la cocina y dificultades para actualizar la disponibilidad de los platillos en tiempo real. 
