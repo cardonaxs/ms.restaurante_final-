@@ -1,0 +1,65 @@
+services:
+  # Base de datos MariaDB
+  mariadb:
+    image: mariadb:latest
+    container_name: bd_restaurante
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: bd_restaurante
+    ports:
+      - "3306:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./database:/docker-entrypoint-initdb.d
+
+  gateway:
+    image: ivanascardona/ms-gateway:latest
+    build: ./gateway
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+    depends_on:
+      - ms-usuarios
+      - ms-menu
+      - ms-pedidos
+
+  ms-usuarios:
+    image: ivanascardona/ms-usuarios:latest
+    build: ./ms.usuarios
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+      - DB_HOST=mariadb
+      - DB_USER=root
+      - DB_PASSWORD=rootpassword
+      - DB_NAME=bd_restaurante
+
+  ms-menu:
+    image: ivanascardona/ms-menu:latest
+    build: ./ms.menu
+    ports:
+      - "3002:3002"
+    environment:
+      - PORT=3002
+      - DB_HOST=mariadb
+      - DB_USER=root
+      - DB_PASSWORD=rootpassword
+      - DB_NAME=bd_restaurante
+
+  ms-pedidos:
+    image: ivanascardona/ms-pedidos:latest
+    build: ./ms.pedidos
+    ports:
+      - "3003:3003"
+    environment:
+      - PORT=3003
+      - DB_HOST=mariadb
+      - DB_USER=root
+      - DB_PASSWORD=rootpassword
+      - DB_NAME=bd_restaurante
+
+volumes:
+  db_data:
