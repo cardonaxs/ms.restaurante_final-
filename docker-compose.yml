@@ -16,10 +16,16 @@ services:
   gateway:
     image: ivanascardona/ms-gateway:latest
     build: ./gateway
+    restart: unless-stopped
     ports:
       - "3000:3000"
     environment:
       - PORT=3000
+      - JWT_SECRET=clave_secreta_del_proyecto
+      # Dentro de Docker se usa el NOMBRE del servicio, no localhost
+      - MS_USUARIOS_URL=http://ms-usuarios:3001
+      - MS_MENU_URL=http://ms-menu:3002
+      - MS_PEDIDOS_URL=http://ms-pedidos:3003
     depends_on:
       - ms-usuarios
       - ms-menu
@@ -28,18 +34,23 @@ services:
   ms-usuarios:
     image: ivanascardona/ms-usuarios:latest
     build: ./ms.usuarios
+    restart: unless-stopped
     ports:
       - "3001:3001"
     environment:
       - PORT=3001
+      - JWT_SECRET=clave_secreta_del_proyecto
       - DB_HOST=mariadb
       - DB_USER=root
       - DB_PASSWORD=rootpassword
       - DB_NAME=bd_restaurante
+    depends_on:
+      - mariadb
 
   ms-menu:
     image: ivanascardona/ms-menu:latest
     build: ./ms.menu
+    restart: unless-stopped
     ports:
       - "3002:3002"
     environment:
@@ -48,18 +59,24 @@ services:
       - DB_USER=root
       - DB_PASSWORD=rootpassword
       - DB_NAME=bd_restaurante
+    depends_on:
+      - mariadb
 
   ms-pedidos:
     image: ivanascardona/ms-pedidos:latest
     build: ./ms.pedidos
+    restart: unless-stopped
     ports:
       - "3003:3003"
     environment:
       - PORT=3003
+      - JWT_SECRET=clave_secreta_del_proyecto
       - DB_HOST=mariadb
       - DB_USER=root
       - DB_PASSWORD=rootpassword
       - DB_NAME=bd_restaurante
+    depends_on:
+      - mariadb
 
 volumes:
   db_data:

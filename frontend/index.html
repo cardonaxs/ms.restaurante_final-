@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel de Administración - ms.restaurante</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #f8f9fa; }
+        .sidebar { min-height: 100vh; background: #343a40; color: white; }
+        .sidebar a { color: #adb5bd; text-decoration: none; display: block; padding: 10px 15px; }
+        .sidebar a:hover, .sidebar a.active { color: white; background: #495057; border-radius: 4px; }
+        .hidden { display: none !important; }
+        #toast-area { position: fixed; top: 1rem; right: 1rem; z-index: 2000; width: min(360px, 90vw); }
+    </style>
+</head>
+<body>
+
+    <!-- AVISOS FLOTANTES -->
+    <div id="toast-area"></div>
+
+    <!-- VISTA DE AUTH (LOGIN / REGISTRO) -->
+    <div id="auth-view" class="container mt-5">
+        <div class="row justify-content-center">
+            <div class="col-md-5">
+                <div class="card shadow">
+                    <div class="card-body">
+                        <h3 id="auth-title" class="card-title text-center mb-4">Iniciar sesión</h3>
+                        <div id="auth-error" class="alert alert-danger hidden"></div>
+                        <div id="auth-success" class="alert alert-success hidden"></div>
+
+                        <!-- Formulario Login -->
+                        <form id="login-form">
+                            <div class="mb-3">
+                                <label class="form-label" for="login-email">Email</label>
+                                <input type="email" id="login-email" class="form-control" autocomplete="username" required>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label" for="login-password">Contraseña</label>
+                                <div class="input-group">
+                                    <input type="password" id="login-password" class="form-control" autocomplete="current-password" required>
+                                    <button type="button" class="btn btn-outline-secondary" onclick="togglePassword('login-password', this)" aria-label="Mostrar u ocultar contraseña">
+                                        <i class="bi bi-eye"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <button type="submit" id="login-btn" class="btn btn-primary w-100 mb-3">Entrar</button>
+                            <p class="text-center mb-0">¿No tienes cuenta? <a href="#" data-auth-mode="register">Regístrate aquí</a></p>
+                        </form>
+
+                        <!-- Formulario Registro -->
+                        <form id="register-form" class="hidden">
+                            <div class="mb-3">
+                                <label class="form-label" for="reg-nombre">Nombre completo</label>
+                                <input type="text" id="reg-nombre" class="form-control" autocomplete="name" required>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label" for="reg-email">Email</label>
+                                <input type="email" id="reg-email" class="form-control" autocomplete="email" required>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label" for="reg-password">Contraseña</label>
+                                <div class="input-group">
+                                    <input type="password" id="reg-password" class="form-control" minlength="6" autocomplete="new-password" required>
+                                    <button type="button" class="btn btn-outline-secondary" onclick="togglePassword('reg-password', this)" aria-label="Mostrar u ocultar contraseña">
+                                        <i class="bi bi-eye"></i>
+                                    </button>
+                                </div>
+                                <div class="form-text">Mínimo 6 caracteres.</div>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label" for="reg-role">Rol de usuario</label>
+                                <select id="reg-role" class="form-select" required>
+                                    <option value="cliente">Cliente</option>
+                                    <option value="mesero">Mesero</option>
+                                    <option value="cocinero">Cocinero</option>
+                                    <option value="admin">Administrador</option>
+                                </select>
+                            </div>
+                            <button type="submit" id="register-btn" class="btn btn-success w-100 mb-3">Registrar usuario</button>
+                            <p class="text-center mb-0">¿Ya tienes cuenta? <a href="#" data-auth-mode="login">Inicia sesión</a></p>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- VISTA DE DASHBOARD -->
+    <div id="dashboard-view" class="container-fluid hidden">
+        <div class="row">
+            <nav class="col-md-3 col-lg-2 d-md-block sidebar p-3">
+                <h4 class="text-white mb-4">ms.restaurante</h4>
+                <ul class="nav flex-column">
+                    <li class="nav-item mb-2" data-tab-item="usuarios"><a href="#" data-tab="usuarios">Usuarios</a></li>
+                    <li class="nav-item mb-2" data-tab-item="menu"><a href="#" data-tab="menu">Menú / Platos</a></li>
+                    <li class="nav-item mb-2" data-tab-item="ordenes"><a href="#" data-tab="ordenes">Órdenes</a></li>
+                    <li class="nav-item mt-4"><button class="btn btn-outline-light btn-sm w-100" onclick="logout()">Cerrar sesión</button></li>
+                </ul>
+            </nav>
+
+            <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4 py-4">
+                <div class="d-flex justify-content-between flex-wrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+                    <h1 id="tab-title" class="h2">Gestión de usuarios</h1>
+                    <span id="user-badge" class="badge text-bg-secondary fs-6"></span>
+                </div>
+                <div id="section-usuarios" class="content-section"><div id="data-usuarios">Cargando...</div></div>
+                <div id="section-menu" class="content-section hidden"><div id="data-menu">Cargando...</div></div>
+                <div id="section-ordenes" class="content-section hidden"><div id="data-ordenes">Cargando...</div></div>
+            </main>
+        </div>
+    </div>
+
+    <!-- MODAL DE FORMULARIOS (crear / editar) -->
+    <div class="modal fade" id="form-modal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-scrollable">
+            <div class="modal-content">
+                <form id="form-modal-form">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="form-modal-title"></h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div id="form-modal-error" class="alert alert-danger hidden"></div>
+                        <div id="form-modal-body"></div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-primary" id="form-modal-submit">Guardar</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DE DETALLE (solo lectura) -->
+    <div class="modal fade" id="info-modal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="info-modal-title"></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-body" id="info-modal-body"></div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="app.js"></script>
+    <script>
+        // Diagnóstico: si app.js no se cargó o falló, se avisa en pantalla
+        window.addEventListener('load', function () {
+            if (typeof onLogin !== 'function') {
+                var d = document.createElement('div');
+                d.className = 'alert alert-danger m-3';
+                d.innerHTML = '<strong>app.js no se cargó o tiene un error.</strong> ' +
+                    'Revisa que app.js esté en la misma carpeta que index.html, que sea el archivo nuevo, ' +
+                    'y abre la consola (F12) para ver el error.';
+                document.body.prepend(d);
+            }
+        });
+    </script>
+</body>
+</html>
