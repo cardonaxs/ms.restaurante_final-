@@ -8,7 +8,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Instalar dependencias de producción
-RUN npm install --production
+RUN npm ci --omit=dev
 
 # Copiar el código fuente del microservicio
 COPY . .

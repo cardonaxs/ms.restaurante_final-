@@ -1,0 +1,23 @@
+services:
+  ms-usuarios:
+    cpus: 1.0
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/metrics').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  stress-test:
+    image: node:22-alpine
+    working_dir: /app
+    command: ["node", "/app/stress-test.js"]
+    profiles: ["stress"]
+    environment:
+      STRESS_TARGET: http://ms-usuarios:3001
+    volumes:
+      - ./ms.usuarios/scripts/stress-test.js:/app/stress-test.js:ro
+    depends_on:
+      ms-usuarios:
+        condition: service_healthy

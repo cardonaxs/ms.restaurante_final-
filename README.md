@@ -31,10 +31,11 @@ Cada microservicio implementa la siguiente estructura interna:
 
 ## Ejecutar la aplicación
 
-1. Copia `.env.example` a `.env` (`cp .env.example .env`). Cambia `JWT_SECRET` por un valor aleatorio largo.
+1. Copia `.env.example` a `.env` (`cp .env.example .env`). Cambia `JWT_SECRET` por un valor aleatorio largo y define una contraseña propia para `GRAFANA_ADMIN_PASSWORD`.
    `rootpassword` en el ejemplo es solo para desarrollo y coincide con la base del Compose anterior.
    Si ya tienes un volumen de MariaDB, conserva la contraseña con la que se creó; cambiar esta
    variable no cambia automáticamente la contraseña guardada dentro de la base.
+   Si ya tenías `.env`, agrega también `GRAFANA_ADMIN_PASSWORD` antes de iniciar Compose.
 2. Desde la raíz del proyecto, ejecuta:
 
    ```bash
@@ -58,6 +59,63 @@ que el token recoja el nuevo rol.
 La base de datos se inicializa automáticamente al crear el volumen por primera vez. Si ya tienes
 datos en un volumen anterior, consérvalo: no uses `docker compose down -v` salvo que quieras
 borrar deliberadamente toda la base.
+
+## Monitoreo y prueba de carga (Fase 4)
+
+Docker Compose incluye Prometheus y Grafana. `ms.usuarios` expone métricas del proceso Node.js
+y de sus solicitudes HTTP:
+
+* **Grafana:** abre `http://localhost:3005` (en Codespaces, abre el puerto **3005**).
+  Inicia sesión con usuario `admin` y la contraseña de `GRAFANA_ADMIN_PASSWORD`.
+  El dashboard **Monitoreo → Monitoreo de ms.usuarios** muestra CPU del proceso Node.js,
+  solicitudes por segundo, latencia p95, memoria del proceso y errores HTTP 4xx/5xx.
+* **Prometheus:** abre `http://localhost:9090` y revisa **Status → Targets**.
+  El target `ms-usuarios` debe aparecer como `UP`.
+
+El endpoint `/metrics` del microservicio de usuarios solo está disponible dentro de la red
+de Docker; no se publica como puerto del host ni pasa por el API Gateway. La métrica de CPU
+corresponde al proceso Node.js del microservicio y se expresa como porcentaje de un núcleo.
+Esto permite observar directamente el trabajo de login (bcrypt) bajo carga sin conceder al
+stack de monitoreo acceso privilegiado al daemon de Docker.
+
+Para medir el umbral de degradación de forma contenida, usa `docker-compose.stress.yml`.
+Ese archivo limita `ms-usuarios` a 1 CPU y 512 MiB solo durante el ensayo; no cambia
+la configuración normal de `docker-compose.yml`. El runner de carga va en otro contenedor,
+así que puede comprobar la recuperación aunque el contenedor bajo prueba se reinicie.
+
+Primero crea una cuenta de prueba desde el frontend. Luego, desde la raíz del proyecto,
+ejecuta este bloque en una terminal Bash. La contraseña se solicita sin mostrarla:
+
+```bash
+read -r -p "Correo de la cuenta de prueba: " STRESS_EMAIL
+read -r -s -p "Contraseña de la cuenta de prueba: " STRESS_PASSWORD
+printf '\n'
+export STRESS_EMAIL STRESS_PASSWORD
+docker compose -f docker-compose.yml -f docker-compose.stress.yml \
+  --profile stress run --rm \
+  -e STRESS_EMAIL -e STRESS_PASSWORD stress-test
+stress_status=$?
+docker compose up -d ms-usuarios
+restore_status=$?
+unset STRESS_EMAIL STRESS_PASSWORD
+if [ "$restore_status" -ne 0 ]; then exit "$restore_status"; fi
+exit "$stress_status"
+```
+
+La carga sube por etapas (1, 2, 4, 8, 12, 16, 24 y hasta 32 solicitudes simultáneas), con
+un máximo de 8 segundos por etapa y 2,000 solicitudes en total. Se detiene antes de seguir
+escalando si la CPU del proceso supera 85% de un núcleo, su memoria RSS llega a 75% del
+límite de 512 MiB, la latencia p95 supera 2 segundos o hay errores. La terminal informa
+la mayor concurrencia estable, la primera degradación y si el login volvió a responder sin
+reinicio manual. El dashboard muestra CPU y memoria del proceso; la memoria se grafica como
+porcentaje del límite del ensayo. El ensayo no busca forzar un OOM ni determinar un límite
+absoluto: informa el umbral observado bajo estos recursos.
+
+Solo ejecútala contra tu propio entorno local con una cuenta de prueba. En Grafana, selecciona
+un rango reciente (por ejemplo, **Last 15 minutes**) y observa los gráficos durante la prueba.
+El bloque restaura la configuración normal de `ms-usuarios` al terminar, sin borrar datos.
+Si el terminal se cierra a la fuerza antes de ejecutar la restauración, ejecuta
+`docker compose up -d ms-usuarios` manualmente.
 
 ## Integración continua (GitHub Actions)
 
