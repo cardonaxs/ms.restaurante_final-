@@ -1,20 +1,13 @@
 # Usar una imagen oficial y ligera de Node.js
-FROM node:18-alpine
+FROM node:22-alpine
 
-# Definir el directorio de trabajo dentro del contenedor
 WORKDIR /app
 
-# Copiar los archivos de dependencias
-COPY package*.json ./
+COPY gateway/package*.json ./
+RUN npm ci --omit=dev
 
-# Instalar las dependencias de producción
-RUN npm install --production
+COPY gateway/index.js ./index.js
 
-# Copiar el resto del código fuente del microservicio
-COPY . .
-
-# Exponer el puerto en el que corre el gateway (reemplaza 3000 si usas otro)
 EXPOSE 3000
 
-# Comando para iniciar la aplicación
 CMD ["node", "index.js"]

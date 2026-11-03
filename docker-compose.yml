@@ -1,82 +1,91 @@
 services:
-  # Base de datos MariaDB
   mariadb:
     image: mariadb:latest
-    container_name: bd_restaurante
-    restart: always
+    restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?Define DB_ROOT_PASSWORD en .env}
       MYSQL_DATABASE: bd_restaurante
-    ports:
-      - "3306:3306"
     volumes:
       - db_data:/var/lib/mysql
       - ./database:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
 
   gateway:
     image: ivanascardona/ms-gateway:latest
-    build: ./gateway
+    build:
+      context: .
+      dockerfile: gateway/Dockerfile
     restart: unless-stopped
-    ports:
-      - "3000:3000"
     environment:
       - PORT=3000
-      - JWT_SECRET=clave_secreta_del_proyecto
-      # Dentro de Docker se usa el NOMBRE del servicio, no localhost
+      - JWT_SECRET=${JWT_SECRET:?Define JWT_SECRET en .env}
       - MS_USUARIOS_URL=http://ms-usuarios:3001
       - MS_MENU_URL=http://ms-menu:3002
       - MS_PEDIDOS_URL=http://ms-pedidos:3003
     depends_on:
-      - ms-usuarios
-      - ms-menu
-      - ms-pedidos
+      ms-usuarios:
+        condition: service_started
+      ms-menu:
+        condition: service_started
+      ms-pedidos:
+        condition: service_started
 
   ms-usuarios:
     image: ivanascardona/ms-usuarios:latest
     build: ./ms.usuarios
     restart: unless-stopped
-    ports:
-      - "3001:3001"
     environment:
       - PORT=3001
-      - JWT_SECRET=clave_secreta_del_proyecto
+      - JWT_SECRET=${JWT_SECRET:?Define JWT_SECRET en .env}
       - DB_HOST=mariadb
       - DB_USER=root
-      - DB_PASSWORD=rootpassword
+      - DB_PASSWORD=${DB_ROOT_PASSWORD:?Define DB_ROOT_PASSWORD en .env}
       - DB_NAME=bd_restaurante
     depends_on:
-      - mariadb
+      mariadb:
+        condition: service_healthy
 
   ms-menu:
     image: ivanascardona/ms-menu:latest
     build: ./ms.menu
     restart: unless-stopped
-    ports:
-      - "3002:3002"
     environment:
       - PORT=3002
       - DB_HOST=mariadb
       - DB_USER=root
-      - DB_PASSWORD=rootpassword
+      - DB_PASSWORD=${DB_ROOT_PASSWORD:?Define DB_ROOT_PASSWORD en .env}
       - DB_NAME=bd_restaurante
     depends_on:
-      - mariadb
+      mariadb:
+        condition: service_healthy
 
   ms-pedidos:
     image: ivanascardona/ms-pedidos:latest
     build: ./ms.pedidos
     restart: unless-stopped
-    ports:
-      - "3003:3003"
     environment:
       - PORT=3003
-      - JWT_SECRET=clave_secreta_del_proyecto
+      - JWT_SECRET=${JWT_SECRET:?Define JWT_SECRET en .env}
       - DB_HOST=mariadb
       - DB_USER=root
-      - DB_PASSWORD=rootpassword
+      - DB_PASSWORD=${DB_ROOT_PASSWORD:?Define DB_ROOT_PASSWORD en .env}
       - DB_NAME=bd_restaurante
     depends_on:
-      - mariadb
+      mariadb:
+        condition: service_healthy
+
+  frontend:
+    image: ivanascardona/ms-restaurante-frontend:latest
+    build: ./frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-8080}:80"
+    depends_on:
+      - gateway
 
 volumes:
   db_data:

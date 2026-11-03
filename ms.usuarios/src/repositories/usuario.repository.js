@@ -43,7 +43,12 @@ class UsuarioRepository {
         'INSERT INTO usuarios (nombre, email, password, rol) VALUES (?, ?, ?, ?)',
         [usuarioData.nombre, usuarioData.email, usuarioData.password, usuarioData.rol]
       );
-      return { id: Number(result.insertId), ...usuarioData };
+      return {
+        id: Number(result.insertId),
+        nombre: usuarioData.nombre,
+        email: usuarioData.email,
+        rol: usuarioData.rol
+      };
     } finally {
       if (conn) conn.release();
     }

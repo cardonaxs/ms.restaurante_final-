@@ -1,12 +1,15 @@
 require('dotenv').config();
 const express = require('express');
-const cors = require('cors');
 const jwt = require('jsonwebtoken');
 const { createProxyMiddleware } = require('http-proxy-middleware');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const JWT_SECRET = process.env.JWT_SECRET || 'clave_secreta_del_proyecto';
+const JWT_SECRET = process.env.JWT_SECRET;
+
+if (!JWT_SECRET) {
+  throw new Error('Falta configurar JWT_SECRET');
+}
 
 // Dentro de Docker NO se usa localhost: cada microservicio se llama por el
 // nombre del servicio del docker-compose (ms-usuarios, ms-menu, ms-pedidos).
@@ -16,20 +19,10 @@ const MS_USUARIOS_URL = process.env.MS_USUARIOS_URL || 'http://localhost:3001';
 const MS_MENU_URL = process.env.MS_MENU_URL || 'http://localhost:3002';
 const MS_PEDIDOS_URL = process.env.MS_PEDIDOS_URL || 'http://localhost:3003';
 
-// CORS: el frontend vive en otra URL (otro puerto de Codespaces), así que el
-// navegador manda un preflight OPTIONS. cors() va PRIMERO y lo responde solo.
-app.use(
-  cors({
-    origin: true, // refleja el origen del frontend (Codespaces, localhost, etc.)
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization']
-  })
-);
-
 // Middleware de validación JWT en el Gateway
 const validarJWT = (req, res, next) => {
   const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
+  const token = authHeader && authHeader.match(/^Bearer\s+(.+)$/i)?.[1];
 
   if (!token) {
     return res.status(401).json({
@@ -51,6 +44,13 @@ const validarJWT = (req, res, next) => {
   }
 };
 
+const soloAdmin = (req, res, next) => {
+  if (req.headers['x-user-rol'] !== 'admin') {
+    return res.status(403).json({ error: 'Esta acción requiere permisos de administrador' });
+  }
+  next();
+};
+
 // Proxy que reenvía la ruta COMPLETA tal cual llegó (/api/menu/..., etc.).
 // Express quita el prefijo al usar app.use('/api/menu', ...), y según la
 // versión de http-proxy-middleware (2.x vs 3.x/4.x) lo restituye o no.
@@ -62,7 +62,6 @@ const proxyA = (target) =>
     pathRewrite: (path, req) => req.originalUrl
   });
 
-// Ruta de prueba: abre https://...-3000.app.github.dev/ para verificar el gateway
 app.get('/', (req, res) => {
   res.json({
     servicio: 'API Gateway ms.restaurante',
@@ -70,13 +69,17 @@ app.get('/', (req, res) => {
   });
 });
 
-// 1. MS USUARIOS (login y registro públicos)
-app.use('/api/usuarios', proxyA(MS_USUARIOS_URL));
+app.post('/api/usuarios/login', proxyA(MS_USUARIOS_URL));
+app.post('/api/usuarios', proxyA(MS_USUARIOS_URL));
+app.use('/api/usuarios', validarJWT, soloAdmin, proxyA(MS_USUARIOS_URL));
 
-// 2. MS MENU (requiere token)
-app.use('/api/menu', validarJWT, proxyA(MS_MENU_URL));
+app.use('/api/menu', validarJWT, (req, res, next) => {
+  if (req.method !== 'GET' && req.headers['x-user-rol'] !== 'admin') {
+    return res.status(403).json({ error: 'Esta acción requiere permisos de administrador' });
+  }
+  next();
+}, proxyA(MS_MENU_URL));
 
-// 3. MS PEDIDOS (requiere token)
 app.use('/api/pedidos', validarJWT, proxyA(MS_PEDIDOS_URL));
 
 app.listen(PORT, () => {

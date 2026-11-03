@@ -2,77 +2,123 @@ const jwt = require('jsonwebtoken');
 const pedidoRepository = require('../repositories/pedido.repository');
 
 //  Reemplaza por la clave secreta exacta que definió tu compañera en ms.usuarios
-const JWT_SECRET = process.env.JWT_SECRET || 'clave_secreta_del_proyecto';
+const JWT_SECRET = process.env.JWT_SECRET;
+
+if (!JWT_SECRET) {
+  throw new Error('Falta configurar JWT_SECRET');
+}
 
 class PedidoService {
-  // Función interna para verificar que el token recibido exista y sea legítimo
   _validarToken(authHeader) {
-    if (!authHeader) {
-      throw { status: 401, message: 'Acceso denegado. No se proporcionó Token JWT' };
+    const token = authHeader?.match(/^Bearer\s+(.+)$/i)?.[1];
+    if (!token) {
+      const error = new Error('Se requiere un token de autenticación.');
+      error.status = 401;
+      throw error;
     }
-
-    const token = authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : authHeader;
 
     try {
       return jwt.verify(token, JWT_SECRET);
-    } catch (error) {
-      throw { status: 403, message: 'Token JWT inválido o expirado' };
+    } catch {
+      const error = new Error('El token es inválido o expiró.');
+      error.status = 401;
+      throw error;
+    }
+  }
+
+  _exigirRol(usuario, roles) {
+    if (!roles.includes(usuario.rol)) {
+      const error = new Error('No tienes permisos para realizar esta acción.');
+      error.status = 403;
+      throw error;
     }
   }
 
   async crearPedido(authHeader, datos) {
     const usuario = this._validarToken(authHeader);
-    const { cliente, items } = datos;
+    this._exigirRol(usuario, ['admin', 'mesero', 'cliente']);
+    const { cliente, items } = datos || {};
 
-    if (!cliente || !items || !Array.isArray(items) || items.length === 0) {
-      throw { status: 400, message: 'Faltan datos requeridos (cliente e items)' };
+    if (
+      typeof cliente !== 'string' || !cliente.trim() || cliente.trim().length > 100 ||
+      !Array.isArray(items) || items.length === 0
+    ) {
+      const error = new Error('Indica un cliente o mesa y al menos un producto.');
+      error.status = 400;
+      throw error;
+    }
+    const itemsValidos = items.every(
+      (item) => item && typeof item === 'object' &&
+        Number.isInteger(Number(item.producto_id)) && Number(item.producto_id) > 0 &&
+        Number.isInteger(Number(item.cantidad)) && Number(item.cantidad) > 0
+    );
+    if (!itemsValidos) {
+      const error = new Error('Cada producto debe tener un ID y una cantidad entera mayor que cero.');
+      error.status = 400;
+      throw error;
     }
 
-    // Cálculo del total
-    const total = items.reduce((sum, item) => sum + (item.cantidad * item.precio_unitario), 0);
-
-    // Guardar cabecera y detalle
-    const pedidoId = await pedidoRepository.crearPedido(usuario.id, cliente, total);
-    await pedidoRepository.crearDetalles(pedidoId, items);
-
-    return { mensaje: 'Pedido creado exitosamente', pedido_id: pedidoId, total };
+    const resultado = await pedidoRepository.crearPedido(
+      usuario.id,
+      cliente.trim(),
+      items.map((item) => ({
+        producto_id: Number(item.producto_id),
+        cantidad: Number(item.cantidad)
+      }))
+    );
+    return { mensaje: 'Pedido creado exitosamente', ...resultado };
   }
 
   async obtenerTodos(authHeader) {
-    this._validarToken(authHeader);
-    return await pedidoRepository.obtenerTodos();
+    const usuario = this._validarToken(authHeader);
+    this._exigirRol(usuario, ['admin', 'mesero', 'cocinero', 'cliente']);
+    return pedidoRepository.obtenerTodos(usuario.rol === 'cliente' ? usuario.id : null);
   }
 
   async obtenerPorId(authHeader, id) {
-    this._validarToken(authHeader);
-    const pedido = await pedidoRepository.obtenerPorId(id);
+    const usuario = this._validarToken(authHeader);
+    this._exigirRol(usuario, ['admin', 'mesero', 'cocinero', 'cliente']);
+    const pedido = await pedidoRepository.obtenerPorId(
+      id,
+      usuario.rol === 'cliente' ? usuario.id : null
+    );
     if (!pedido) {
-      throw { status: 404, message: 'Pedido no encontrado' };
+      const error = new Error('Pedido no encontrado.');
+      error.status = 404;
+      throw error;
     }
     return pedido;
   }
 
   async actualizarEstado(authHeader, id, estado) {
-    this._validarToken(authHeader);
+    const usuario = this._validarToken(authHeader);
+    this._exigirRol(usuario, ['admin', 'mesero', 'cocinero']);
 
-    const estadosValidos = ['pendiente', 'en_preparacion', 'servido', 'cancelado'];
+    const estadosValidos = ['pendiente', 'en_preparacion', 'servido', 'pagado', 'cancelado'];
     if (!estadosValidos.includes(estado)) {
-      throw { status: 400, message: 'Estado no válido' };
+      const error = new Error('Estado no válido.');
+      error.status = 400;
+      throw error;
     }
 
     const actualizado = await pedidoRepository.actualizarEstado(id, estado);
     if (!actualizado) {
-      throw { status: 404, message: 'Pedido no encontrado para actualizar' };
+      const error = new Error('Pedido no encontrado para actualizar.');
+      error.status = 404;
+      throw error;
     }
 
     return { mensaje: `Estado actualizado a '${estado}'` };
   }
 
   async cancelar(authHeader, id) {
-    this._validarToken(authHeader);
+    const usuario = this._validarToken(authHeader);
+    this._exigirRol(usuario, ['admin']);
     const eliminado = await pedidoRepository.eliminar(id);
     if (!eliminado) {
-      throw { status: 404, message: 'Pedido no encontrado' };
+      const error = new Error('Pedido no encontrado.');
+      error.status = 404;
+      throw error;
     }
     return { mensaje: 'Pedido eliminado correctamente' };
   }

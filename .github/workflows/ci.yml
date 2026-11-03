@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  validate-build-publish:
+    runs-on: ubuntu-latest
+    env:
+      DB_ROOT_PASSWORD: ci-only-database-password
+      JWT_SECRET: ci-only-jwt-secret-not-for-production
+
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Revisar sintaxis JavaScript
+        run: |
+          find gateway frontend ms.usuarios/src ms.menu/src ms.pedidos/src \
+            -type f -name '*.js' -not -path '*/node_modules/*' -print0 \
+            | xargs -0 -r -n 1 node --check
+
+      - name: Validar Docker Compose
+        run: docker compose config --quiet
+
+      - name: Configurar Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Iniciar sesión en Docker Hub
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Construir imágenes de la aplicación
+        run: docker compose build gateway ms-usuarios ms-menu ms-pedidos frontend
+
+      - name: Publicar imágenes en Docker Hub
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: docker compose push gateway ms-usuarios ms-menu ms-pedidos frontend

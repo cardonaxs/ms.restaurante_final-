@@ -1,8 +1,8 @@
 // ============================================================
 // CONFIGURACIÓN
 // ============================================================
-// El frontend SOLO habla con el gateway (puerto 3000). Sin "/" al final.
-const API_URL = 'https://upgraded-system-4g4ppq6rqjhj7x4-3000.app.github.dev';
+// La API usa el mismo origen; nginx reenvía /api al gateway.
+const API_URL = '';
 
 const ESTADOS = ['pendiente', 'en_preparacion', 'servido', 'pagado', 'cancelado'];
 const ESTADO_BADGE = {
@@ -14,8 +14,7 @@ const ESTADO_BADGE = {
 };
 const ROL_BADGE = { admin: 'danger', mesero: 'primary', cocinero: 'warning', cliente: 'secondary' };
 
-// Qué puede hacer cada rol en la INTERFAZ.
-// OJO: el backend no valida roles; esto solo controla qué botones se muestran.
+// Estos permisos controlan la interfaz; el backend también valida cada operación.
 const PERMISOS = {
   admin:    { tabs: ['usuarios', 'menu', 'ordenes'], usuariosEditar: true,  menuEditar: true,  pedidoCrear: true,  pedidoEstado: true,  pedidoEliminar: true },
   mesero:   { tabs: ['menu', 'ordenes'],             usuariosEditar: false, menuEditar: false, pedidoCrear: true,  pedidoEstado: true,  pedidoEliminar: false },
@@ -99,7 +98,7 @@ async function api(path, { method = 'GET', body, auth = true } = {}) {
     });
   } catch (e) {
     throw new Error(
-      'No se pudo conectar con el servidor. Revisa que Docker esté corriendo y que el puerto 3000 esté en Public en Codespaces.'
+      'No se pudo conectar con el servidor. Revisa que Docker esté corriendo y que el puerto 8080 esté en Public en Codespaces.'
     );
   }
 
@@ -197,8 +196,7 @@ async function onRegister(e) {
       body: {
         nombre: $('reg-nombre').value.trim(),
         email,
-        password: $('reg-password').value,
-        rol: $('reg-role').value
+        password: $('reg-password').value
       }
     });
     $('register-form').reset();
@@ -386,7 +384,7 @@ function nuevoUsuario() {
     ],
     values: { rol: 'mesero' },
     onSubmit: async (data) => {
-      await api('/api/usuarios', { method: 'POST', body: data });
+      await api('/api/usuarios/admin', { method: 'POST', body: data });
       toast('Usuario creado');
       cargarUsuarios();
     }
@@ -436,8 +434,14 @@ async function eliminarUsuario(id) {
 // MENÚ
 // ------------------------------------------------------------
 async function cargarMenu() {
-  state.menu = await api('/api/menu');
+  const [menu, categorias] = await Promise.all([
+    api('/api/menu' + (state.user?.rol === 'admin' ? '?incluirNoDisponibles=true' : '')),
+    api('/api/menu/categorias')
+  ]);
+  state.menu = menu;
   const editar = can().menuEditar;
+  const nombreCategoria = (id) =>
+    categorias.find((categoria) => Number(categoria.id) === Number(id))?.nombre || '';
 
   const filas = state.menu
     .map(
@@ -446,7 +450,7 @@ async function cargarMenu() {
         <td>${esc(p.nombre)}</td>
         <td>${esc(p.descripcion)}</td>
         <td>${money(p.precio)}</td>
-        <td>${p.categoria_id ?? ''}</td>
+        <td>${esc(nombreCategoria(p.categoria_id))}</td>
         <td>${Number(p.disponible) ? '<span class="badge text-bg-success">Disponible</span>' : '<span class="badge text-bg-secondary">Agotado</span>'}</td>
         ${
           editar
@@ -464,6 +468,7 @@ async function cargarMenu() {
     <div class="d-flex gap-2 mb-3">
       <button class="btn btn-outline-secondary" onclick="loadData('menu')">Actualizar menú</button>
       ${editar ? '<button class="btn btn-success" onclick="nuevoProducto()">+ Nuevo plato</button>' : ''}
+      ${editar ? '<button class="btn btn-outline-success" onclick="nuevaCategoria()">+ Nueva categoría</button>' : ''}
     </div>
     <div class="card"><div class="table-responsive">
       <table class="table table-hover align-middle mb-0">
@@ -471,43 +476,80 @@ async function cargarMenu() {
         <tbody>${filas || '<tr><td colspan="7" class="text-center text-muted py-4">No hay platos disponibles en el menú.</td></tr>'}</tbody>
       </table>
     </div></div>
-    <p class="text-muted small mt-2">Solo se listan los platos disponibles.</p>`;
+    ${editar ? '' : '<p class="text-muted small mt-2">Solo se listan los platos disponibles.</p>'}`;
 }
 
-const CAMPOS_PRODUCTO = [
-  { name: 'nombre', label: 'Nombre del plato', required: true },
-  { name: 'descripcion', label: 'Descripción', type: 'textarea' },
-  { name: 'precio', label: 'Precio', type: 'number', step: '0.01', min: 0, required: true },
-  { name: 'categoria_id', label: 'ID de categoría', type: 'number', step: '1', min: 1, default: 1 },
-  { name: 'disponible', label: 'Disponible', type: 'checkbox', default: true }
-];
-
-function nuevoProducto() {
+function nuevaCategoria() {
   abrirFormulario({
-    title: 'Nuevo plato',
-    submitText: 'Crear plato',
-    fields: CAMPOS_PRODUCTO,
-    onSubmit: async (data) => {
-      await api('/api/menu', { method: 'POST', body: data });
-      toast('Plato creado');
-      cargarMenu();
+    title: 'Nueva categoría',
+    submitText: 'Crear categoría',
+    fields: [{ name: 'nombre', label: 'Nombre de la categoría', required: true }],
+    onSubmit: async ({ nombre }) => {
+      const categoria = await api('/api/menu/categorias', {
+        method: 'POST',
+        body: { nombre }
+      });
+      toast(`Categoría "${categoria.nombre}" creada`);
+      await cargarMenu();
     }
   });
 }
 
-function editarProducto(id) {
+function camposProducto(categorias) {
+  return [
+    { name: 'nombre', label: 'Nombre del plato', required: true },
+    { name: 'descripcion', label: 'Descripción', type: 'textarea' },
+    { name: 'precio', label: 'Precio', type: 'number', step: '0.01', min: 0, required: true },
+    {
+      name: 'categoria_id',
+      label: 'Categoría',
+      type: 'select',
+      options: [
+        { value: '', label: 'Sin categoría' },
+        ...categorias.map((categoria) => ({ value: categoria.id, label: categoria.nombre }))
+      ]
+    },
+    { name: 'disponible', label: 'Disponible', type: 'checkbox', default: true }
+  ];
+}
+
+async function nuevoProducto() {
+  try {
+    const categorias = await api('/api/menu/categorias');
+    abrirFormulario({
+      title: 'Nuevo plato',
+      submitText: 'Crear plato',
+      fields: camposProducto(categorias),
+      values: categorias.length ? { categoria_id: categorias[0].id } : {},
+      onSubmit: async (data) => {
+        await api('/api/menu', { method: 'POST', body: data });
+        toast('Plato creado');
+        cargarMenu();
+      }
+    });
+  } catch (err) {
+    toast(err.message, 'danger');
+  }
+}
+
+async function editarProducto(id) {
   const p = state.menu.find((x) => Number(x.id) === Number(id));
   if (!p) return;
-  abrirFormulario({
-    title: `Editar plato #${p.id}`,
-    fields: CAMPOS_PRODUCTO,
-    values: p,
-    onSubmit: async (data) => {
-      await api(`/api/menu/${p.id}`, { method: 'PUT', body: data });
-      toast('Plato actualizado');
-      cargarMenu();
-    }
-  });
+  try {
+    const categorias = await api('/api/menu/categorias');
+    abrirFormulario({
+      title: `Editar plato #${p.id}`,
+      fields: camposProducto(categorias),
+      values: p,
+      onSubmit: async (data) => {
+        await api(`/api/menu/${p.id}`, { method: 'PUT', body: data });
+        toast('Plato actualizado');
+        cargarMenu();
+      }
+    });
+  } catch (err) {
+    toast(err.message, 'danger');
+  }
 }
 
 async function eliminarProducto(id) {
@@ -527,11 +569,7 @@ async function eliminarProducto(id) {
 // ------------------------------------------------------------
 async function asegurarMenu() {
   if (!state.menu.length) {
-    try {
-      state.menu = await api('/api/menu');
-    } catch {
-      /* si falla, se muestran los productos como "Producto #id" */
-    }
+    state.menu = await api('/api/menu');
   }
 }
 

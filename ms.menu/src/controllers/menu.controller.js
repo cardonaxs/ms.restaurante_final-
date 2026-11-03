@@ -1,9 +1,27 @@
 const menuService = require('../services/menu.service');
 
 class MenuController {
+  async getCategorias(req, res) {
+    try {
+      res.json(await menuService.obtenerCategorias());
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+
+  async createCategoria(req, res) {
+    try {
+      res.status(201).json(await menuService.crearCategoria(req.body));
+    } catch (error) {
+      res.status(400).json({ error: error.message });
+    }
+  }
+
   async getMenu(req, res) {
     try {
-      const menu = await menuService.obtenerMenu();
+      const incluirNoDisponibles =
+        req.query.incluirNoDisponibles === 'true' && req.headers['x-user-rol'] === 'admin';
+      const menu = await menuService.obtenerMenu(incluirNoDisponibles);
       res.json(menu);
     } catch (error) {
       res.status(500).json({ error: error.message });

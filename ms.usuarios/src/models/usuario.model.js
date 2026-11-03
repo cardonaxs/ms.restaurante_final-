@@ -4,7 +4,7 @@ class Usuario {
     this.nombre = nombre;
     this.email = email;
     this.password = password;
-    this.rol = rol || 'cajero';
+    this.rol = rol || 'mesero';
     this.created_at = created_at;
   }
 }

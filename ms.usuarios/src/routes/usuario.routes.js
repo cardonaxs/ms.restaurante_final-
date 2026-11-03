@@ -1,23 +1,15 @@
 const express = require('express');
 const router = express.Router();
 const usuarioController = require('../controllers/usuario.controller');
+const { validarJWT, soloAdmin } = require('../middleware/auth.middleware');
 
-// Obtener todos los usuarios
-router.get('/', usuarioController.obtenerTodos);
-
-// Obtener un usuario por ID
-router.get('/:id', usuarioController.obtenerPorId);
-
-// Crear un nuevo usuario
+router.post('/login', usuarioController.login);
 router.post('/', usuarioController.crear);
 
-// Autenticación / Login
-router.post('/login', usuarioController.login);
-
-// Actualizar usuario por ID (AGREGADO)
-router.put('/:id', usuarioController.actualizar);
-
-// Eliminar usuario por ID (AGREGADO)
-router.delete('/:id', usuarioController.eliminar);
+router.post('/admin', validarJWT, soloAdmin, usuarioController.crearAdmin);
+router.get('/', validarJWT, soloAdmin, usuarioController.obtenerTodos);
+router.get('/:id', validarJWT, soloAdmin, usuarioController.obtenerPorId);
+router.put('/:id', validarJWT, soloAdmin, usuarioController.actualizar);
+router.delete('/:id', validarJWT, soloAdmin, usuarioController.eliminar);
 
 module.exports = router;

@@ -3,6 +3,8 @@ const menuController = require('../controllers/menu.controller');
 
 const router = Router();
 
+router.get('/categorias', (req, res) => menuController.getCategorias(req, res));
+router.post('/categorias', (req, res) => menuController.createCategoria(req, res));
 router.get('/', (req, res) => menuController.getMenu(req, res));
 router.get('/:id', (req, res) => menuController.getProductoById(req, res));
 router.get('/categoria/:categoriaId', (req, res) => menuController.getByCategoria(req, res));

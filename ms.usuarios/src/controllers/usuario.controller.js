@@ -21,6 +21,15 @@ class UsuarioController {
 
   async crear(req, res) {
     try {
+      const nuevoUsuario = await usuarioService.crearUsuario({ ...req.body, rol: 'cliente' });
+      res.status(201).json(nuevoUsuario);
+    } catch (error) {
+      res.status(400).json({ mensaje: error.message });
+    }
+  }
+
+  async crearAdmin(req, res) {
+    try {
       const nuevoUsuario = await usuarioService.crearUsuario(req.body);
       res.status(201).json(nuevoUsuario);
     } catch (error) {
@@ -28,7 +37,6 @@ class UsuarioController {
     }
   }
 
-  // Método para actualizar usuario (AGREGADO)
   async actualizar(req, res) {
     try {
       const usuarioActualizado = await usuarioService.actualizarUsuario(req.params.id, req.body);

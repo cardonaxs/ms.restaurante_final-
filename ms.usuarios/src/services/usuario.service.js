@@ -2,7 +2,11 @@ const usuarioRepository = require('../repositories/usuario.repository');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'clave_secreta_del_proyecto';
+const JWT_SECRET = process.env.JWT_SECRET;
+
+if (!JWT_SECRET) {
+  throw new Error('Falta configurar JWT_SECRET');
+}
 
 class UsuarioService {
   // Método para obtener todos los usuarios
@@ -21,13 +25,22 @@ class UsuarioService {
 
   // Método crearUsuario
   async crearUsuario(datosUsuario) {
-    const { nombre, email, password, rol } = datosUsuario;
+    const { nombre, email, password, rol } = datosUsuario || {};
+    const correo = typeof email === 'string' ? email.trim().toLowerCase() : '';
 
-    if (!nombre || !email || !password) {
-      throw new Error('El nombre, email y contraseña son obligatorios.');
+    if (
+      typeof nombre !== 'string' || !nombre.trim() ||
+      nombre.trim().length > 100 ||
+      correo.length > 100 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo) ||
+      typeof password !== 'string' || password.length < 6
+    ) {
+      throw new Error('Ingresa un nombre, correo válido y una contraseña de al menos 6 caracteres.');
+    }
+    if (!['cliente', 'mesero', 'cocinero', 'admin'].includes(rol)) {
+      throw new Error('El rol indicado no es válido.');
     }
 
-    const usuarioExistente = await usuarioRepository.buscarPorEmail(email);
+    const usuarioExistente = await usuarioRepository.buscarPorEmail(correo);
     if (usuarioExistente) {
       throw new Error('El correo electrónico ya está registrado.');
     }
@@ -37,9 +50,9 @@ class UsuarioService {
 
     const nuevoUsuarioData = {
       nombre,
-      email,
+      email: correo,
       password: hashedPassword,
-      rol: rol || 'mesero'
+      rol
     };
 
     return await usuarioRepository.crear(nuevoUsuarioData);
@@ -52,11 +65,29 @@ class UsuarioService {
       throw new Error('Usuario no encontrado.');
     }
 
-    const datosFinales = {
-      nombre: datosActualizados.nombre || usuario.nombre,
-      email: datosActualizados.email || usuario.email,
-      rol: datosActualizados.rol || usuario.rol
-    };
+    const datos = datosActualizados || {};
+    const datosFinales = { nombre: usuario.nombre, email: usuario.email, rol: usuario.rol };
+    if (datos.nombre !== undefined) {
+      if (typeof datos.nombre !== 'string' || !datos.nombre.trim() || datos.nombre.trim().length > 100) {
+        throw new Error('El nombre indicado no es válido.');
+      }
+      datosFinales.nombre = datos.nombre.trim();
+    }
+    if (datos.email !== undefined) {
+      if (typeof datos.email !== 'string') throw new Error('El correo indicado no es válido.');
+      const email = datos.email.trim().toLowerCase();
+      if (email.length > 100 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        throw new Error('El correo indicado no es válido.');
+      }
+      if (email !== usuario.email && await usuarioRepository.buscarPorEmail(email)) {
+        throw new Error('El correo electrónico ya está registrado.');
+      }
+      datosFinales.email = email;
+    }
+    if (datos.rol !== undefined) datosFinales.rol = datos.rol;
+    if (!['cliente', 'mesero', 'cocinero', 'admin'].includes(datosFinales.rol)) {
+      throw new Error('El rol indicado no es válido.');
+    }
 
     await usuarioRepository.actualizar(id, datosFinales);
     return await usuarioRepository.obtenerPorId(id);
@@ -73,11 +104,11 @@ class UsuarioService {
 
   // Método login
   async login(email, password) {
-    if (!email || !password) {
+    if (typeof email !== 'string' || !email.trim() || typeof password !== 'string' || !password) {
       throw new Error('Debes proporcionar email y contraseña.');
     }
 
-    const usuario = await usuarioRepository.buscarPorEmail(email);
+    const usuario = await usuarioRepository.buscarPorEmail(email.trim().toLowerCase());
     if (!usuario) {
       throw new Error('Credenciales inválidas.');
     }
